@@ -20,27 +20,55 @@ const transport = nodemailer.createTransport({
 
 let sent = 0;
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const wrap = html => `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;">${html}</div>`;
+// ===== قالب الإيميل: شعار + ألوان النادي + توقيع اللجنة =====
+const fs = require("fs"), path = require("path");
+let LOGO = null; try{ LOGO = fs.readFileSync(path.join(__dirname, "logo.png")); }catch(e){ LOGO = null; }
+const C = { indigo: "#1F3649", terracotta: "#C1481E", sand: "#F6F1EA", ink: "#2B2B2B", muted: "#7A7268" };
+const fmtDate = d => { try{ return new Date(d + "T12:00:00Z").toLocaleDateString("ar-SA-u-ca-gregory-nu-arab", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Riyadh" }); }catch(e){ return d; } };
+const greet = name => name ? `<p style="margin:0 0 14px;font-size:16px;"><b>مرحبًا ${esc(name)}،</b></p>` : "";
+const para = t => `<p style="margin:0 0 14px;">${t}</p>`;
+const taskBox = (title, date, extra) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 16px;"><tr><td style="background:#FBF7F1;border:1px solid #E7DDCF;border-right:4px solid ${C.terracotta};border-radius:10px;padding:12px 16px;line-height:1.9;">` +
+  `<div style="color:${C.muted};font-size:12px;">المهمة</div><div style="font-size:16px;font-weight:bold;color:${C.indigo};">${esc(title)}</div>` +
+  (date ? `<div style="color:${C.muted};font-size:12px;margin-top:8px;">الموعد</div><div style="font-size:14.5px;">${esc(fmtDate(date))}</div>` : "") + (extra || "") + `</td></tr></table>`;
+const msgBox = (text, tone) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 16px;"><tr><td style="background:#FBF7F1;border:1px solid #E7DDCF;border-right:4px solid ${tone === "praise" ? "#2E8B57" : tone === "warning" ? C.terracotta : C.indigo};border-radius:10px;padding:14px 16px;font-size:15px;line-height:2;">${esc(text).replace(/\n/g, "<br>")}</td></tr></table>`;
+const wrap = (html, subject) => `<!DOCTYPE html><html dir="rtl" lang="ar"><body style="margin:0;padding:0;background:${C.sand};">` +
+  `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.sand};padding:20px 10px;"><tr><td align="center">` +
+  `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #E7DDCF;font-family:Tahoma,Arial,sans-serif;color:${C.ink};direction:rtl;text-align:right;">` +
+  `<tr><td align="center" style="background:${C.indigo};padding:22px 16px 16px;border-bottom:4px solid ${C.terracotta};">` +
+  (LOGO ? `<img src="cid:clublogo" width="72" height="72" alt="شعار النادي" style="display:block;margin:0 auto 10px;border-radius:50%;background:#fff;">` : "") +
+  `<div style="color:#ffffff;font-size:18px;font-weight:bold;">نادي الإرشاد السياحي</div><div style="color:#E9D9C4;font-size:13px;margin-top:2px;">اللجنة التنفيذية</div></td></tr>` +
+  `<tr><td style="padding:24px 22px 8px;font-size:15px;line-height:1.9;">${html}</td></tr>` +
+  `<tr><td style="padding:6px 22px 22px;font-size:15px;line-height:1.9;"><div style="border-top:1px solid #EFE6D8;padding-top:14px;">مع خالص التحية،<br><b style="color:${C.indigo};">اللجنة التنفيذية</b><br><span style="color:${C.muted};font-size:13px;">نادي الإرشاد السياحي</span></div></td></tr>` +
+  `<tr><td style="background:#FBF7F1;padding:12px 22px;color:${C.muted};font-size:11.5px;line-height:1.8;text-align:center;">هذه رسالة آلية من نظام حجز مهام اللجنة التنفيذية، يُرجى عدم الرد عليها مباشرة.</td></tr>` +
+  `</table></td></tr></table></body></html>`;
 const ek = e => String(e || "").trim().toLowerCase().replace(/\s+/g, "").replace(/[.#$\[\]\/]/g, ",");
 const pk = p => { const d = String(p || "").replace(/[٠-٩]/g, c => "٠١٢٣٤٥٦٧٨٩".indexOf(c)).replace(/\D+/g, ""); return d ? "p" + (d.length >= 9 ? d.slice(-9) : d) : ""; };
 const nowIso = () => new Date().toISOString();
+const { fbStatsCompute } = require("./stats_core");
 const val = async p => (await db.ref(p).once("value")).val();
 
 class LimitReached extends Error {}
 async function mail(to, subject, html){
   if(!to) return;
   if(sent >= MAX_MAILS_PER_RUN) throw new LimitReached("mail limit for this run");
-  await transport.sendMail({ from: FROM, to, subject, html: wrap(html) });
+  await transport.sendMail({ from: FROM, to, subject, html: wrap(html, subject), attachments: LOGO ? [{ filename: "logo.png", content: LOGO, cid: "clublogo" }] : [] });
   sent++;
   await new Promise(r => setTimeout(r, 250));
 }
 const notifyAdmin = (subject, body) =>
-  mail(ADMIN_EMAIL, "[لجنة المهام] " + subject, `<div style="white-space:pre-wrap">${esc(body)}</div>`).catch(e => { if(e instanceof LimitReached) throw e; });
+  mail(ADMIN_EMAIL, "[لجنة المهام] " + subject, para(`<span style="white-space:pre-wrap">${esc(body)}</span>`)).catch(e => { if(e instanceof LimitReached) throw e; });
 
 async function isLeaderUid(uid){
   try{
     const u = await admin.auth().getUser(uid);
     return !!(u.emailVerified && (await val("leaders/" + ek(u.email))));
+  }catch(e){ return false; }
+}
+async function isPresidentUid(uid){
+  try{
+    const u = await admin.auth().getUser(uid);
+    const l = u.emailVerified ? await val("leaders/" + ek(u.email)) : null;
+    return !!(l && l.role === "president");
   }catch(e){ return false; }
 }
 function logAct(up, type, details){
@@ -54,7 +82,7 @@ function msgTo(up, email, phone, name, type, message, source){
 }
 
 // ============ الأحداث ============
-const LEADER_ONLY = new Set(["taskAdded", "assigned", "memberMessage", "ban"]);
+const LEADER_ONLY = new Set(["taskAdded", "assigned", "memberMessage", "presidentMessage", "ban"]);
 
 async function handle(ev){
   if(LEADER_ONLY.has(ev.type) && !(await isLeaderUid(ev.by))) return; // نتجاهل أي حدث مزوّر
@@ -92,8 +120,7 @@ async function handle(ev){
         }
         if(bpr && bpr.email && bcl){
           await mail(bpr.email, `أصبحت أساسيًا في مهمة: "${t.title}"`,
-            `<p>مرحبًا ${esc(bcl.name)}،</p><p>ألغى الشخص الأساسي حجزه لمهمة "${esc(t.title)}"، وأصبحتَ الآن الأساسي المسؤول عن تنفيذها.</p>` +
-            (t.dueDate ? `<p>التاريخ: ${esc(t.dueDate)}</p>` : ""));
+            greet(bcl.name) + para("ألغى الشخص الأساسي حجزه لهذه المهمة، وأصبحتَ الآن الأساسي المسؤول عن تنفيذها.") + taskBox(t.title, t.dueDate));
         }
       }
       return;
@@ -109,10 +136,10 @@ async function handle(ev){
           if(m.bannedAt || !m.email) continue;
           const group = t.type === "group";
           await mail(m.email, group ? `مهمة جماعية جديدة: "${t.title}"` : `مهمة جديدة متاحة للحجز: "${t.title}"`,
-            `<p>مرحبًا ${esc(m.name)}،<br>` + (group
-              ? `تمت إضافة مهمة جماعية جديدة متاحة للانضمام إليها الآن (${esc(t.slots || 1)} خانات).</p>`
-              : `تمت إضافة مهمة جديدة متاحة للحجز الآن.</p>`) +
-            `<p>المهمة: ${esc(t.title)}</p>` + (t.dueDate ? `<p>التاريخ: ${esc(t.dueDate)}</p>` : ""));
+            greet(m.name) + para(group
+              ? `تمت إضافة مهمة جماعية جديدة متاحة للانضمام إليها الآن (${esc(t.slots || 1)} خانات).`
+              : `تمت إضافة مهمة جديدة متاحة للحجز الآن.`) +
+            taskBox(t.title, t.dueDate) + para("للحجز، يُرجى الدخول إلى الموقع من الحساب الشخصي واختيار المهمة."));
         }
       }
       return;
@@ -121,23 +148,28 @@ async function handle(ev){
       if(!ev.email) return;
       const team = /^member/.test(ev.role || "");
       await mail(ev.email, team ? `تم تعيينك لمهمة ضمن فريق: "${ev.title}"` : `تم تعيينك لمهمة: "${ev.title}"`,
-        `<p>مرحبًا ${esc(ev.name)}،</p><p>${team ? "تم تعيينك ضمن فريق تنفيذ المهمة التالية." : "تم تعيينك لتنفيذ المهمة التالية."}</p>` +
-        `<p>المهمة: ${esc(ev.title)}</p>` + (ev.dueDate ? `<p>التاريخ: ${esc(ev.dueDate)}</p>` : ""));
+        greet(ev.name) + para(team ? "تم تعيينك ضمن فريق تنفيذ المهمة التالية." : "تم تعيينك لتنفيذ المهمة التالية.") + taskBox(ev.title, ev.dueDate));
       return;
     }
     case "memberMessage": {
       if(!ev.email) return;
       const title = ev.msgType === "praise" ? "رسالة شكر وتقدير" : ev.msgType === "warning" ? "تنبيه من اللجنة التنفيذية" : "رسالة من اللجنة التنفيذية";
       await mail(ev.email, title,
-        `<p>${ev.name ? "مرحبًا " + esc(ev.name) + "،<br>" : ""}وصلتك رسالة جديدة من اللجنة التنفيذية.</p>` +
-        `<div style="font-size:14.5px;line-height:1.8;">${esc(ev.message).replace(/\n/g, "<br>")}</div>`);
+        greet(ev.name) + para(ev.msgType === "praise" ? "يسرّنا أن نشاركك رسالة الشكر والتقدير التالية من اللجنة التنفيذية:" : ev.msgType === "warning" ? "وصلك التنبيه التالي من اللجنة التنفيذية:" : "وصلتك رسالة جديدة من اللجنة التنفيذية:") + msgBox(ev.message, ev.msgType));
+      return;
+    }
+    case "presidentMessage": {
+      if(!ev.email) return;
+      if(!(await isPresidentUid(ev.by))) return;
+      const title = ev.msgType === "praise" ? "رسالة شكر من رئيس النادي" : ev.msgType === "warning" ? "تنبيه من رئيس النادي" : "رسالة من رئيس النادي";
+      await mail(ev.email, title,
+        greet(ev.name) + para(ev.msgType === "praise" ? `يسرّنا أن نشاركك رسالة الشكر والتقدير التالية من ${esc(ev.from || "رئيس النادي")}:` : ev.msgType === "warning" ? `وصلك التنبيه التالي من ${esc(ev.from || "رئيس النادي")}:` : `وصلتك رسالة جديدة من ${esc(ev.from || "رئيس النادي")}:`) + msgBox(ev.message, ev.msgType));
       return;
     }
     case "ban": {
       if(!ev.email) return;
       await mail(ev.email, "تنبيه هام: تم استبعادك من حجز المهام",
-        `<p>مرحبًا ${esc(ev.name)}،<br>نحيطك علمًا أنه تم استبعادك من إمكانية حجز مهام جديدة من قِبل اللجنة التنفيذية.</p>` +
-        `<p>السبب: ${esc(ev.reason)}</p><p>في حال الرغبة بمراجعة هذا القرار، يُرجى التواصل المباشر مع اللجنة التنفيذية.</p>`);
+        greet(ev.name) + para("نحيطك علمًا أنه تم استبعادك من إمكانية حجز مهام جديدة من قِبل اللجنة التنفيذية.") + msgBox("السبب: " + (ev.reason || ""), "warning") + para("في حال الرغبة بمراجعة هذا القرار، يُرجى التواصل المباشر مع اللجنة التنفيذية."));
       return;
     }
     case "feedback": {
@@ -149,7 +181,7 @@ async function handle(ev){
       const u = await admin.auth().getUser(ev.by);
       if(!u.emailVerified) return;
       await mail(u.email, "تم إنشاء عضويتك بنجاح",
-        `<p>مرحبًا ${esc(ev.name || "")}،</p><p>تم تسجيل عضويتك بنجاح في نظام حجز مهام اللجنة التنفيذية. يمكنك الآن تسجيل الدخول مباشرة باستخدام إيميلك وكلمة المرور.</p>`);
+        greet(ev.name) + para("يسعدنا انضمامك! تم تسجيل عضويتك بنجاح في نظام حجز مهام اللجنة التنفيذية.") + para("يمكنك الآن تسجيل الدخول مباشرة باستخدام إيميلك وكلمة المرور، واختيار المهام المناسبة لك."));
       return;
     }
     case "deleteAuth": {
@@ -210,7 +242,7 @@ async function registerStrike(name, phone, email, taskTitle){
       logAct(up, "استبعاد عضو", `${name} استُبعد تلقائيًا بعد ${count} مرات عدم إنجاز/إلغاء لمهامه`);
       await db.ref().update(up);
       await notifyAdmin("استبعاد تلقائي لعضو", `${name} (${phone} / ${email}) تم استبعاده تلقائيًا من الحجز بعد ${count} مرات عدم إنجاز مهمة محجوزة دون إلغائها.`);
-      await mail(email, "تنبيه هام: تم استبعادك من حجز المهام", `<p>تم استبعادك من حجز المهام الجديدة بسبب تكرار عدم إنجاز مهمة محجوزة دون إلغائها.</p>`);
+      await mail(email, "تنبيه هام: تم استبعادك من حجز المهام", greet(name) + para("نحيطك علمًا أنه تم استبعادك من حجز المهام الجديدة بسبب تكرار عدم إنجاز مهمة محجوزة دون إلغائها.") + para("في حال الرغبة بمراجعة هذا القرار، يُرجى التواصل المباشر مع اللجنة التنفيذية."));
       return;
     }
     await db.ref().update(up);
@@ -220,15 +252,14 @@ async function registerStrike(name, phone, email, taskTitle){
     `لم يتم إنجاز مهمة "${taskTitle}" التي حجزتها، ولم يتم إلغاء الحجز قبل موعدها. هذا تنبيه رقم ${count} بخصوص الالتزام بالمهام — في حال تكرار ذلك سيتم استبعادك تلقائيًا من الحجز.`, "system");
   logAct(up, "تحذير عدم إنجاز", `${name} تلقّى تحذيرًا بسبب عدم إنجاز/إلغاء مهمة "${taskTitle}" (المرة ${count})`);
   await db.ref().update(up);
-  await mail(email, "تنبيه: التزامك بالمهام المحجوزة", `<p>لم يتم إنجاز مهمة "${esc(taskTitle)}" التي حجزتها. هذا تنبيه رقم ${count}.</p>`);
+  await mail(email, "تنبيه: التزامك بالمهام المحجوزة", greet(name) + para(`لم يتم إنجاز مهمة محجوزة باسمك ولم يُلغَ حجزها قبل موعدها. هذا التنبيه رقم ${count} بخصوص الالتزام بالمهام، وفي حال تكراره سيتم استبعادك تلقائيًا من الحجز.`) + taskBox(taskTitle));
 }
 
 async function runDaily(){
   const today = riyadhDate(), tomorrow = addDays(today, 1);
   const [tasks, claims, priv, rstate] = await Promise.all([val("tasks"), val("claims"), val("claimPrivate"), val("reminderState")]);
   const bodyOf = (name, title, date, text) =>
-    `<p>مرحبًا ${esc(name)}،<br>${text}</p><p>المهمة: ${esc(title)}</p><p>التاريخ: ${esc(date)}</p>` +
-    `<p>يُرجى إنجاز المهمة في وقتها. شكرًا لك على تعاونك مع اللجنة التنفيذية.</p>`;
+    greet(name) + para(text) + taskBox(title, date) + para("يُرجى إنجاز المهمة في وقتها. شكرًا لك على تعاونك مع اللجنة التنفيذية.");
   for(const tid of Object.keys(claims || {})){
     const t = (tasks || {})[tid]; if(!t || t.archived) continue;
     for(const role of Object.keys(claims[tid])){
@@ -247,8 +278,8 @@ async function runDaily(){
         if(t.dueDate && t.dueDate < today && !cl.proofUrl){
           if(!st.proof){
             await mail(pr.email, "تذكير: رفع إثبات إنجاز — " + t.title,
-              `<p>مرحبًا ${esc(cl.name)}،<br>لاحظنا أن موعد مهمتك قد مرّ ولم يصلنا بعد إثبات إنجازها.</p><p>المهمة: ${esc(t.title)}</p>` +
-              `<p>في حال إتمامها، يُرجى الدخول إلى «تسجيل الدخول» في الموقع ورفع صورة الإثبات. وفي حال وجود أي عائق، يُرجى إبلاغ اللجنة.</p>`);
+              greet(cl.name) + para("لاحظنا أن موعد مهمتك قد مرّ ولم يصلنا بعد إثبات إنجازها.") + taskBox(t.title, t.dueDate) +
+              para("في حال إتمامها، يُرجى الدخول إلى «تسجيل الدخول» في الموقع ورفع صورة الإثبات. وفي حال وجود أي عائق، يُرجى إبلاغ اللجنة."));
             await set("proof");
           }
           if(!st.strike){ await set("strike"); await registerStrike(cl.name, pr.phone, pr.email, t.title); }
@@ -257,6 +288,45 @@ async function runDaily(){
     }
   }
   await archiveMonthlyHero(today);
+  try{ await runMonthlyReport(today); }catch(e){ if(e instanceof LimitReached) throw e; console.error("monthly report failed", e.message); }
+}
+
+
+// ملخص شهري لرئيس النادي: يُرسل مرة واحدة في اليوم الأول من كل شهر
+async function runMonthlyReport(today){
+  if(today.slice(8, 10) !== "01") return;
+  const months = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+  const lastDay = addDays(today, -1), ym = lastDay.slice(0, 7);
+  if(await val("reportState/" + ym)) return;
+  const leaders = (await val("leaders")) || {};
+  const pres = Object.keys(leaders).map(k => ({ k, l: leaders[k] || {} })).filter(x => x.l.role === "president")
+    .map(x => ({ name: x.l.name || "", email: x.l.email || x.k.replace(/,/g, ".") })).filter(x => /@/.test(x.email));
+  if(!pres.length) return;
+  const [tasks, claims, notes, members] = await Promise.all([val("tasks"), val("claims"), val("taskNotes"), val("members")]);
+  const ls = await db.ref("activityLog").orderByChild("createdAt").limitToLast(6000).get();
+  const st = fbStatsCompute({ tasks, claims, notes, members, log: ls.val() || {} }, lastDay, 6);
+  const m = st.months[st.months.length - 1], p = st.months[st.months.length - 2] || {};
+  const label = months[+ym.slice(5, 7) - 1] + " " + ym.slice(0, 4);
+  const esc = t => String(t == null ? "" : t).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const d = (a, b) => (a == null || b == null) ? "" : (a === b ? " (دون تغيير)" : ` (${a > b ? "▲" : "▼"} ${Math.round(Math.abs(a - b) * 10) / 10} عن الشهر السابق)`);
+  const row = (t, v, x) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${t}</td><td style="padding:6px 10px;border-bottom:1px solid #eee"><b>${v}</b>${x || ""}</td></tr>`;
+  const lead = m.leaders.length ? m.leaders.map(x => `${esc(x.name)}: رفع ${x.added} مهمة، وكتب ${x.notes} ملاحظة`).join("<br>") : "لا توجد مهام مرفوعة";
+  const noteList = [];
+  m.doneTasks.forEach(t => t.notes.forEach(n => noteList.push(`<li><b>${esc(n.by)}</b> على «${esc(t.title)}»: ${esc(n.text)}</li>`)));
+  const html = `<div><h2 style="margin:0 0 12px;color:${C.indigo};font-size:18px;">ملخص أداء النادي — ${label}</h2><table style="border-collapse:collapse;width:100%">` +
+    row("مهام أُضيفت", m.added, d(m.added, p.added)) + row("حجوزات", m.bookings, d(m.bookings, p.bookings)) +
+    row("مهام منجزة (إثباتات)", m.proofs, d(m.proofs, p.proofs)) +
+    row("نسبة إنجاز مهام الشهر", m.rate == null ? "—" : m.rate + "٪", ` (${m.dueDone} من ${m.due})`) +
+    row("إلغاءات الحجز", m.cancels, d(m.cancels, p.cancels) + (m.cancelRate == null ? "" : ` — نسبة الإلغاء ${m.cancelRate}٪`)) +
+    row("أعضاء نشطون", m.active, d(m.active, p.active)) + row("أعضاء جدد", m.registered, d(m.registered, p.registered)) +
+    row("متوسط زمن الإنجاز", m.avgHours == null ? "—" : m.avgHours + " ساعة") +
+    row("إجمالي أعضاء النادي", st.snapshot.members, st.snapshot.banned ? ` (${st.snapshot.banned} مستبعدون من الحجز)` : "") + row("مهام مفتوحة حاليًا", st.snapshot.open, ` (${st.snapshot.unbooked} دون حجز)`) +
+    row("مهام تجاوزت موعدها دون إنجاز", st.snapshot.overdue) +
+    `</table><p><b>القادة هذا الشهر:</b><br>${lead}</p>` +
+    (noteList.length ? `<p><b>ملاحظات القادة على المهام المكتملة:</b></p><ul>${noteList.join("")}</ul>` : "") +
+    `<p style="color:#777;font-size:12px">للتفاصيل والمقارنة بين الأشهر، يُرجى الدخول إلى الموقع من الحساب الشخصي (صفحة الرئيس).</p></div>`;
+  for(const x of pres) await mail(x.email, `ملخص أداء النادي — ${label}`, greet(x.name) + html);
+  await db.ref("reportState/" + ym).set({ sentAt: nowIso() });
 }
 
 async function archiveMonthlyHero(today){
