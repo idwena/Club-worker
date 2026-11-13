@@ -1,0 +1,36 @@
+name: club-worker
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # كل ٣٠ دقيقة: إيميلات الأحداث (يبقى ضمن الحصة المجانية للمستودع الخاص)
+    - cron: "0 6 * * *"      # يوميًا ٦ص UTC (٩ص الرياض): التذكيرات + الإنذار + أرشفة بطل الشهر
+  workflow_dispatch:
+concurrency:
+  group: club-worker
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      SMTP_FROM: ${{ secrets.SMTP_FROM }}
+      ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --omit=dev
+        working-directory: worker
+      - name: إيميلات الأحداث
+        run: node index.js events
+        working-directory: worker
+      - name: المهام اليومية
+        if: github.event.schedule == '0 6 * * *' || github.event_name == 'workflow_dispatch'
+        run: node index.js daily
+        working-directory: worker
