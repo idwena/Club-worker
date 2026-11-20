@@ -1,9 +1,14 @@
 name: club-worker
 on:
   schedule:
-    - cron: "*/30 * * * *"   # كل ٣٠ دقيقة: إيميلات الأحداث (يبقى ضمن الحصة المجانية للمستودع الخاص)
+    - cron: "*/30 * * * *"   # شبكة أمان: إيميلات الأحداث كل ٣٠ دقيقة إن توقفت «النبضة» الخارجية
     - cron: "0 6 * * *"      # يوميًا ٦ص UTC (٩ص الرياض): التذكيرات + الإنذار + أرشفة بطل الشهر
-  workflow_dispatch:
+  workflow_dispatch:         # النبضة الخارجية (cron-job.org) والتشغيل اليدوي
+    inputs:
+      daily:
+        description: "تشغيل المهام اليومية أيضًا (التذكيرات وأرشفة بطل الشهر)"
+        type: boolean
+        default: false
 concurrency:
   group: club-worker
   cancel-in-progress: false
@@ -31,6 +36,6 @@ jobs:
         run: node index.js events
         working-directory: worker
       - name: المهام اليومية
-        if: github.event.schedule == '0 6 * * *' || github.event_name == 'workflow_dispatch'
+        if: github.event.schedule == '0 6 * * *' || github.event.inputs.daily == 'true'
         run: node index.js daily
         working-directory: worker
