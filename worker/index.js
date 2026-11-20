@@ -30,6 +30,8 @@ const para = t => `<p style="margin:0 0 14px;">${t}</p>`;
 const taskBox = (title, date, extra) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 16px;"><tr><td style="background:#FBF7F1;border:1px solid #E7DDCF;border-right:4px solid ${C.terracotta};border-radius:10px;padding:12px 16px;line-height:1.9;">` +
   `<div style="color:${C.muted};font-size:12px;">المهمة</div><div style="font-size:16px;font-weight:bold;color:${C.indigo};">${esc(title)}</div>` +
   (date ? `<div style="color:${C.muted};font-size:12px;margin-top:8px;">الموعد</div><div style="font-size:14.5px;">${esc(fmtDate(date))}</div>` : "") + (extra || "") + `</td></tr></table>`;
+const hoursLbl = h => { const n = Number(h); return n > 0 ? String(Math.round(n * 100) / 100) : ""; };
+const hoursExtra = h => Number(h) > 0 ? `<div style="color:${C.muted};font-size:12px;margin-top:8px;">عدد الساعات</div><div style="font-size:14.5px;">${esc(hoursLbl(h))}</div>` : "";
 const msgBox = (text, tone) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 16px;"><tr><td style="background:#FBF7F1;border:1px solid #E7DDCF;border-right:4px solid ${tone === "praise" ? "#2E8B57" : tone === "warning" ? C.terracotta : C.indigo};border-radius:10px;padding:14px 16px;font-size:15px;line-height:2;">${esc(text).replace(/\n/g, "<br>")}</td></tr></table>`;
 const wrap = (html, subject) => `<!DOCTYPE html><html dir="rtl" lang="ar"><body style="margin:0;padding:0;background:${C.sand};">` +
   `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.sand};padding:20px 10px;"><tr><td align="center">` +
@@ -139,7 +141,7 @@ async function handle(ev){
             greet(m.name) + para(group
               ? `تمت إضافة مهمة جماعية جديدة متاحة للانضمام إليها الآن (${esc(t.slots || 1)} خانات).`
               : `تمت إضافة مهمة جديدة متاحة للحجز الآن.`) +
-            taskBox(t.title, t.dueDate) + para("للحجز، يُرجى الدخول إلى الموقع من الحساب الشخصي واختيار المهمة."));
+            taskBox(t.title, t.dueDate, hoursExtra(t.hours)) + para("للحجز، يُرجى الدخول إلى الموقع من الحساب الشخصي واختيار المهمة."));
         }
       }
       return;
