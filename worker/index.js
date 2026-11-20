@@ -339,7 +339,7 @@ async function archiveMonthlyHero(today){
   const claims = (await val("claims")) || {};
   const counts = {};
   Object.values(claims).forEach(roles => Object.values(roles).forEach(c => {
-    if(!c.claimedAt || !c.proofUrl) return; // تُحتسب المهام المنجزة فقط
+    if(!c.claimedAt || !c.proofUrl || c.memberGone) return; // تُحتسب المهام المنجزة فقط، دون الأعضاء المحذوفين
     if(riyadhDate(new Date(c.claimedAt)).slice(0, 7) === ym) counts[c.name] = (counts[c.name] || 0) + 1;
   }));
   const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
