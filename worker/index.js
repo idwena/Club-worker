@@ -131,7 +131,7 @@ async function handle(ev){
       const t = await val("tasks/" + ev.taskId);
       if(!t) return;
       await notifyAdmin("تمت إضافة مهمة جديدة", `المهمة: ${t.title}` + (t.dueDate ? `\nالتاريخ: ${t.dueDate}` : ""));
-      if(t.type === "individual" || t.type === "group"){
+      if((t.type === "individual" || t.type === "group") && !t.past){
         const members = (await val("members")) || {};
         for(const uid of Object.keys(members)){
           const m = members[uid];
@@ -147,7 +147,7 @@ async function handle(ev){
       return;
     }
     case "assigned": {
-      if(!ev.email) return;
+      if(!ev.email || ev.silent) return;
       const team = /^member/.test(ev.role || "");
       if(ev.past){
         const tt = (await val("tasks/" + ev.taskId)) || {};
