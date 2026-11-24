@@ -149,6 +149,13 @@ async function handle(ev){
     case "assigned": {
       if(!ev.email) return;
       const team = /^member/.test(ev.role || "");
+      if(ev.past){
+        const tt = (await val("tasks/" + ev.taskId)) || {};
+        await mail(ev.email, `سُجّلت باسمك مهمة منجزة: "${ev.title}"`,
+          greet(ev.name) + para("سُجّلت باسمك المهمة التالية لإنجازك إياها سابقًا.") + taskBox(ev.title, ev.dueDate, hoursExtra(tt.hours)) +
+          para("لاحتسابها في رصيدك، يُرجى الدخول إلى الموقع ورفع صورة إثبات الإنجاز. لن يُرسل أي تذكير بشأن هذه المهمة."));
+        return;
+      }
       await mail(ev.email, team ? `تم تعيينك لمهمة ضمن فريق: "${ev.title}"` : `تم تعيينك لمهمة: "${ev.title}"`,
         greet(ev.name) + para(team ? "تم تعيينك ضمن فريق تنفيذ المهمة التالية." : "تم تعيينك لتنفيذ المهمة التالية.") + taskBox(ev.title, ev.dueDate));
       return;
@@ -263,7 +270,7 @@ async function runDaily(){
   const bodyOf = (name, title, date, text) =>
     greet(name) + para(text) + taskBox(title, date) + para("يُرجى إنجاز المهمة في وقتها. شكرًا لك على تعاونك مع اللجنة التنفيذية.");
   for(const tid of Object.keys(claims || {})){
-    const t = (tasks || {})[tid]; if(!t || t.archived) continue;
+    const t = (tasks || {})[tid]; if(!t || t.archived || t.past) continue;
     for(const role of Object.keys(claims[tid])){
       if(!(role === "primary" || /^member/.test(role))) continue;
       const cl = claims[tid][role], pr = ((priv || {})[tid] || {})[role] || {};
