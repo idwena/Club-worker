@@ -30,7 +30,7 @@ function fbStatsCompute(raw, today, nMonths){
     const t = tasks[id] || {}, c = claims[id] || {}, d = doneTask(t, c);
     snap.tasksTotal++; if(d) snap.doneTotal++;
     if(!t.archived && !d){
-      if(t.dueDate && t.dueDate < today){ snap.overdue++; overdueList.push({ title: t.title || "", dueDate: t.dueDate }); }
+      if(t.dueDate && t.dueDate < today && !t.past){ snap.overdue++; overdueList.push({ title: t.title || "", dueDate: t.dueDate }); }
       else { snap.open++; if(!Object.keys(c).length){ snap.unbooked++; unbookedList.push({ title: t.title || "", dueDate: t.dueDate || "" }); } }
     }
     const ck = mk(t.createdAt), cm = M[ck];
@@ -63,5 +63,5 @@ function fbStatsCompute(raw, today, nMonths){
   unbookedList.sort((a, b) => String(a.dueDate || "9").localeCompare(String(b.dueDate || "9")));
   return { today, current: curKey, months, snapshot: Object.assign(snap, { overdueList: overdueList.slice(0, 8), unbookedList: unbookedList.slice(0, 8) }) };
 }
-
+// STATS_CORE_END
 module.exports = { fbStatsCompute };
